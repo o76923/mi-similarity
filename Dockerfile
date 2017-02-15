@@ -1,8 +1,21 @@
-FROM o76923/mi:0.5
+FROM python:3.6-alpine
 MAINTAINER James Endicott <james.endicott@colorado.edu>
 
-RUN pip install aioprocessing
+WORKDIR /app
+ENTRYPOINT ["/bin/sh", "-c", "source /app/sh/entrypoint.sh"]
 
-COPY conf /app/conf
-COPY sh /app/sh
-COPY py /app/py
+#Install redis
+RUN apk --no-cache add redis \
+    && apk --no-cache add --virtual build-deps \
+        gcc \
+        musl-dev \
+    && pip install \
+        aioredis \
+        aioprocessing \
+        hiredis \
+        nltk \
+    && apk --no-cache del --purge build-deps \
+    &&python -m nltk.downloader -d /usr/share/nltk_data punkt wordnet \
+    && mkdir -p /app/redis
+
+COPY ./ /app/
