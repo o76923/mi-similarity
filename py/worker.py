@@ -1,31 +1,28 @@
 import asyncio
-import json
 from collections import defaultdict
 
 import aioredis
 from os import getenv
 
-from py.algorithm import MihalceaSentSimBNC, clean_string
+from py.algorithm import MihalceaSentSimBNC
 
 loop = asyncio.get_event_loop()
 filename = getenv("TARGET", "variable_definition")
 
 
-def init_worker(sentence_dict):
+def init_worker(sentence_dict, batch_no, batch_count):
     w = Worker()
-    loop.run_until_complete(w.start_listener(sentence_dict))
+    print("worker started")
+    loop.run_until_complete(w.main(sentence_dict, batch_no, batch_count))
+    print("worker finished")
 
 
 class Worker(object):
-    listen_channel = "task_created:1"
+    batch_size = 250
+    unprocessed = "unprocessed"
 
     def __init__(self):
         self.mi = MihalceaSentSimBNC()
-        loop.run_until_complete(self._initialize())
-
-    async def _initialize(self):
-        self.redis_listen = await aioredis.create_redis(('localhost', 6379), password='foobared', encoding="utf-8")
-        self.ch, = await self.redis_listen.subscribe(self.listen_channel)
 
     def calculate_similarities(self, pairs, sentence_dict):
         ret = []
@@ -35,23 +32,30 @@ class Worker(object):
 
     async def sims_to_redis(self, sims):
         sim_dict = defaultdict(dict)
-        newly_processed = ["%s_%s" % (s[0], s[1]) for s in sims]
-        print("newly_processed", newly_processed)
         for l, r, s in sims:
             sim_dict[l][r] = s
-        redis = await aioredis.create_redis(('localhost', 6379), password='foobared')
+        redis = await aioredis.create_redis(('localhost', 6379), password='foobared', encoding="utf-8")
         for k, v in sim_dict.items():
             await redis.hmset_dict("sim_%s" % k, v)
-        await redis.srem("unprocessed", *newly_processed)
         redis.close()
 
-    async def start_listener(self, sentence_dict):
-        async for msg in self.ch.iter(encoding="utf-8", decoder=json.loads):
-            if msg["type"] == "pair_request":
-                pairs = [p.split("_") for p in msg["data"]["pairs"]]
-                print("pairs", pairs)
+    async def main(self, sentence_dict, batch_no, batch_count):
+        redis = await aioredis.create_redis(('localhost', 6379), password='foobared', encoding="utf-8")
+        continue_flag = True
+        while continue_flag:
+            batch = []
+            for i in range(self.batch_size):
+                pair = await redis.spop(self.unprocessed)
+                if pair is not None:
+                    batch.append(pair)
+                else:
+                    continue_flag = False
+                    break
+            if len(batch) > 0:
+                pairs = [p.split("_") for p in batch]
                 sims = self.calculate_similarities(pairs, sentence_dict)
                 await self.sims_to_redis(sims)
-            elif msg["type"] == "control":
-                if msg["command"] == "shutdown":
-                    break
+                batch_no.value += 1
+                print("Batch {:>9,d} / {:>9,d}".format(batch_no.value, batch_count))
+            else:
+                continue_flag = False
