@@ -32,17 +32,12 @@ def init_worker(sentences, announcer):
 def process_batch(batch_no, batch):
     global sbw
     rows = []
-    line_no = 0
-    try:
-        for l, r in batch:
+    for b in batch:
+        try:
+            l, r = b
             rows.append((l, r, sbw.mi.similarity(sbw.sentence_dict[l], sbw.sentence_dict[r])))
-            line_no += 1
-            if line_no % 1000 == 0:
-                sbw.write_to_file(rows)
-                rows = []
-                if batch_no % 100 == 0:
-                    sbw.announcer("wrote batch {:,d}".format(batch_no))
-    except (KeyError, ValueError):
-        pass
-    finally:
-        sbw.write_to_file(rows)
+        except ValueError:
+            pass
+    sbw.write_to_file(rows)
+    if batch_no % 100 == 0:
+        sbw.announcer("wrote batch {:,d}".format(batch_no))
