@@ -1,61 +1,48 @@
-import asyncio
-from collections import defaultdict
-
-import aioredis
+import re
+from functools import partial
 from os import getenv
-
+import multiprocessing as mp
 from py.algorithm import MihalceaSentSimBNC
 
-loop = asyncio.get_event_loop()
 filename = getenv("TARGET", "variable_definition")
 
 
-def init_worker(sentence_dict, batch_no, batch_count):
-    w = Worker()
-    print("worker started")
-    loop.run_until_complete(w.main(sentence_dict, batch_no, batch_count))
-    print("worker finished")
+class SimBatchWorker(object):
 
-
-class Worker(object):
-    batch_size = 250
-    unprocessed = "unprocessed"
-
-    def __init__(self):
+    def __init__(self, sentences, announcer):
+        self.process_id = int(re.search("(\d+)$", mp.current_process().name).group(1))
+        self.dest_file = "/app/data/temp_sim/sims-%d.csv" % self.process_id
         self.mi = MihalceaSentSimBNC()
+        self.sentence_dict = sentences
+        self.announcer = partial(announcer, process="SimBatchWorker-%d" % self.process_id)
 
-    def calculate_similarities(self, pairs, sentence_dict):
-        ret = []
-        for l, r in pairs:
-            ret.append((l, r, self.mi.similarity(sentence_dict[l], sentence_dict[r])))
-        return ret
+    def write_to_file(self, lines):
+        lt = "".join(["{},{},{:0.4f}\n".format(l, r, s) for l, r, s in lines])
+        with open(self.dest_file, "a") as out_file:
+            out_file.writelines(lt)
 
-    async def sims_to_redis(self, sims):
-        sim_dict = defaultdict(dict)
-        for l, r, s in sims:
-            sim_dict[l][r] = s
-        redis = await aioredis.create_redis(('localhost', 6379), password='foobared', encoding="utf-8")
-        for k, v in sim_dict.items():
-            await redis.hmset_dict("sim_%s" % k, v)
-        redis.close()
+sbw: SimBatchWorker
 
-    async def main(self, sentence_dict, batch_no, batch_count):
-        redis = await aioredis.create_redis(('localhost', 6379), password='foobared', encoding="utf-8")
-        continue_flag = True
-        while continue_flag:
-            batch = []
-            for i in range(self.batch_size):
-                pair = await redis.spop(self.unprocessed)
-                if pair is not None:
-                    batch.append(pair)
-                else:
-                    continue_flag = False
-                    break
-            if len(batch) > 0:
-                pairs = [p.split("_") for p in batch]
-                sims = self.calculate_similarities(pairs, sentence_dict)
-                await self.sims_to_redis(sims)
-                batch_no.value += 1
-                print("Batch {:>9,d} / {:>9,d}".format(batch_no.value, batch_count))
-            else:
-                continue_flag = False
+
+def init_worker(sentences, announcer):
+    global sbw
+    sbw = SimBatchWorker(sentences, announcer)
+
+
+def process_batch(batch_no, batch):
+    global sbw
+    rows = []
+    line_no = 0
+    try:
+        for l, r in batch:
+            rows.append((l, r, sbw.mi.similarity(sbw.sentence_dict[l], sbw.sentence_dict[r])))
+            line_no += 1
+            if line_no % 1000 == 0:
+                sbw.write_to_file(rows)
+                rows = []
+                if batch_no % 100 == 0:
+                    sbw.announcer("wrote batch {:,d}".format(batch_no))
+    except (KeyError, ValueError):
+        pass
+    finally:
+        sbw.write_to_file(rows)

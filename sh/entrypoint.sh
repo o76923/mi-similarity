@@ -1,4 +1,3 @@
 #!/bin/sh
 
-redis-server /app/conf/redis.conf &
-python -m py.master
+PYTHON_UNBUFFERED=1 python -m py.master

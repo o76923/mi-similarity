@@ -24,7 +24,7 @@ class MihalceaSentSimBNC(object):
     #tc = None #term count?
     idf = {}
     debug = False
-    idf_file = '/app/py/bnc.ic'
+    idf_file = '/app/data/bnc.ic'
 
     def __init__(self):
         '''

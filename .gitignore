@@ -1,6 +1,3 @@
+mi.iml
+.idea/*
 .gitignore
-.idea/externalDependencies.xml
-.idea/misc.xml
-.idea/modules.xml
-.idea/workspace.xml
-/py/setup.py
