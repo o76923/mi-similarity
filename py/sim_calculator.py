@@ -26,7 +26,8 @@ class MiSim(object):
         raw_sentences = {}
         for file_name in self._cfg.sentence_files:
             with open("/app/data/%s" % file_name) as in_file:
-                in_file.readline()
+                if self._cfg.headers:
+                    in_file.readline()
                 raw_sentences.update({x[0]: x[1] for x in [l.split("\t") for l in in_file.readlines()]})
         self.announcer("loaded sentences")
         self.sentences = {k: clean_string(v) for k, v in raw_sentences.items()}
