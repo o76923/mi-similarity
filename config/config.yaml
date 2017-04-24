@@ -1,0 +1,10 @@
+tasks:
+  - type: calculate_similarity
+    from:
+      files:
+        - variable_name.txt
+      pairs: all
+    output:
+      filename: sims_News_2.csv
+options:
+  cores: 19
