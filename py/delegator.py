@@ -1,26 +1,27 @@
+import os
 from datetime import datetime
 from functools import partial
+from shutil import rmtree
+from py.utils import *
+from py.configurator import Config
+from py.sim_calculator import SimCalculator
 
-from py.configurator import ConfigSettings
-from py.sim_calculator import MiSim
+start_time = datetime.now()
+announcer = partial(announcer, process="Delegator", start=start_time)
 
+cfg = Config()
+announcer("Loaded Configuration")
 
-def echo_message(msg, process, start, ):
-    diff = datetime.now()-start
-    days = diff.days
-    hours = diff.seconds//3600
-    minutes = diff.seconds//60 - hours * 60
-    seconds = diff.seconds - minutes * 60
-    print("{process:<20}{ts:<20}{msg:<39}".format(process=process, ts="{:02d}d {:02d}h {:02d}m {:02d}s".format(days, hours, minutes, seconds), msg=msg))
+os.makedirs(cfg.temp_dir)
+announcer("Created temp directory at {}".format(cfg.temp_dir))
 
+for task in cfg.tasks:
+    t = SimCalculator(task, start_time)
+    t.main()
+    announcer("Finished Task")
+announcer("Finished All Tasks")
 
-if __name__ == "__main__":
-    start_time = datetime.now()
-    announcer = partial(echo_message, process="Delegator", start=start_time)
-    cfg = ConfigSettings()
-    announcer("Loaded Configuration")
-    for task in cfg.tasks:
-        s = MiSim(task, partial(echo_message, start=start_time))
-        s.main()
-        announcer("Finished Task")
-    announcer("Done")
+rmtree(cfg.temp_dir)
+announcer("Removed temp directory")
+
+announcer("Done")

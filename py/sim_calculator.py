@@ -1,68 +1,114 @@
-from functools import partial
-from itertools import combinations, count, zip_longest
-from os import mkdir
-from shutil import rmtree
-from datetime import datetime
-import subprocess
-from py.mi_algorithm import clean_string
-import py.sim_worker as w
+import sys
+import h5py as h5
+import numpy as np
 import multiprocessing as mp
+import os
+import shutil
+from mpi4py import MPI
+from py.configurator import Calculate
+from py.mi_algorithm import MihalceaSentSimBNC, clean_string
+from py.utils import *
+from functools import partial
 
-from py.configurator import CalculateSettings
 
-BATCH_SIZE = 1000
-CHUNK_SIZE = 100
-
-
-class MiSim(object):
-
-    def __init__(self, config: CalculateSettings, announcer):
+class SimCalculator(object):
+    def __init__(self, config: Calculate, start_time):
         self._cfg = config
+        self.announcer = partial(announcer, process="Calculator", start=start_time)
+        self.mi = MihalceaSentSimBNC()
+        self.raw_sentences = dict()
         self.sentences = dict()
-        self.announcer = partial(announcer, process="MiSim", start=datetime.now())
-        self.batch_count = 0
+        self.sorted_ids = []
+        self._init_hdf5()
+
+    def _init_hdf5(self):
+        try:
+            os.mkdir("/app/data/output")
+            shutil.chown("/app/data/output/", user=1000)
+        except FileExistsError:
+            pass
+        self.f = h5.File("/app/data/output/{}".format(self._cfg.output_file), 'w')
+        shutil.chown(self.f.filename, user=1000)
 
     def load_sentences(self):
-        raw_sentences = {}
-        for file_name in self._cfg.sentence_files:
-            with open("/app/data/%s" % file_name) as in_file:
+        self.raw_sentences = {}
+        for source_file in self._cfg.source_files:
+            with open("/app/data/{}".format(source_file)) as in_file:
+                new_documents = {}
                 if self._cfg.headers:
                     in_file.readline()
-                raw_sentences.update({x[0]: x[1] for x in [l.split("\t") for l in in_file.readlines()]})
-        self.announcer("loaded sentences")
-        self.sentences = {k: clean_string(v) for k, v in raw_sentences.items()}
-        self.announcer("cleaned sentences")
-        self.batch_count = (len(self.sentences)*(len(self.sentences)-1)//2)//BATCH_SIZE
-        return self.sentences
 
-    def create_temp_dir(self):
-        try:
-            rmtree("/app/data/temp_sim")
-        except FileNotFoundError:
-            pass
-        mkdir("/app/data/temp_sim")
-        self.announcer("made temp_dir")
+                if self._cfg.numbered:
+                    for line in in_file.readlines():
+                        sentence_id, sentence_text = line[:-1].split("\t")
+                        new_documents[int(sentence_id)] = sentence_text
+                else:
+                    sentence_id = 0
+                    for line in in_file:
+                        new_documents[sentence_id] = line[:-1]
+                        sentence_id += 1
+                self.raw_sentences.update(new_documents)
 
-    def create_batch(self):
-        pairs = combinations(self.sentences, 2)
-        for batch_no, batch in zip(count(), zip_longest(*[iter(pairs)]*BATCH_SIZE, fillvalue=None)):
-            yield batch_no, batch
+    def clean_sentences(self):
+        with mp.Pool(self._cfg.num_cores) as pool:
+            self.sentences = {k: v for k, v in
+                              pool.starmap_async(func=clean_string, iterable=self.raw_sentences.items()).get()}
+        self.sentences = {k: v for k, v in self.sentences.items() if len(v) > 0}
+        self.sorted_ids = sorted(self.sentences.keys())
 
-    def calculate_similarities(self):
-        self.announcer("made pairs")
-        with mp.Pool(self._cfg.num_cores, initializer=w.init_worker, initargs=(self.sentences, self.announcer, self.batch_count, self._cfg)) as pool:
-            pool.starmap_async(w.process_batch, self.create_batch(), chunksize=CHUNK_SIZE).get()
-        self.announcer("calculated similarities")
+    def save_input(self):
+        in_data = self.f.require_group("input")
+        in_data.require_dataset("id",
+                                dtype=np.uint32,
+                                shape=(len(self.sentences),),
+                                data=np.array(self.sorted_ids))
+        string_dt = h5.h5t.special_dtype(vlen=str)
+        in_data.require_dataset("text",
+                                dtype=string_dt,
+                                shape=(len(self.sentences),),
+                                data=[self.raw_sentences[x].encode('utf-8') for x in self.sorted_ids],
+                                compression="gzip",
+                                compression_opts=9,
+                                shuffle=True)
+        in_data.require_dataset("tokenized_text",
+                                dtype=string_dt,
+                                shape=(len(self.sentences),),
+                                data=[" ".join(self.sentences[x]).encode('utf-8') for x in self.sorted_ids],
+                                compression="gzip",
+                                compression_opts=9,
+                                shuffle=True)
 
-    def merge_similarity_files(self):
-        subprocess.run("cat /app/data/temp_sim/sims-*.csv > /app/data/output/%s_Mi.csv" % self._cfg.output_file, shell=True)
-        self.announcer(msg="Catted all files to sims.csv")
-        rmtree("/app/data/temp_sim")
-        self.announcer(msg="Removed temp_sims")
+    def _init_sim(self):
+        sim = self.f.require_group("sim")
+        self.ds = sim.require_dataset(self._cfg.ds_name,
+                                      dtype=np.float32,
+                                      shape=(len(self.sentences), len(self.sentences)),
+                                      fillvalue=0.0)
+
+    def _close_file(self):
+        self.f.flush()
+        self.f.close()
+
+    def launch_workers(self):
+        comm = MPI.COMM_SELF.Spawn(sys.executable,
+                                   args=['-m', 'py.sim_worker'],
+                                   maxprocs=self._cfg.num_cores - 1).Merge()
+        self.announcer("Workers launched")
+        comm.bcast("/app/data/output/{}".format(self._cfg.output_file), root=0)
+        comm.bcast(self.announcer, root=0)
+        self.announcer("Broadcast filename and announcer")
+        comm.Disconnect()
+        self.announcer("Disconnected from COMM_SELF")
 
     def main(self):
         self.load_sentences()
-        self.create_batch()
-        self.create_temp_dir()
-        self.calculate_similarities()
-        self.merge_similarity_files()
+        self.announcer("Loaded sentences")
+        self.clean_sentences()
+        self.announcer("Cleaned sentences")
+        self.save_input()
+        self.announcer("Saved sentences")
+        self._init_sim()
+        self.announcer("Initialized similarities")
+        self._close_file()
+        self.announcer("Closed h5 file")
+        self.launch_workers()

@@ -1,36 +1,80 @@
 import multiprocessing as mp
+import os
+import warnings
 import yaml
+from uuid import uuid4
+from typing import Optional, List, Tuple, Text
+from py.utils import *
 
 
-class TaskSettings(object):
+CONFIG_FILE = "/app/data/"+os.environ.get("CONFIG_FILE", "config.yml")
+
+
+class Task(object):
     num_cores: int
+    temp_dir: Text
+    type: TASK_TYPE
 
-    def __init__(self, num_cores):
-        self.num_cores = num_cores
+    def __init__(self, global_settings, task_settings):
+        self.num_cores = global_settings["num_cores"]
+        self.temp_dir = global_settings["temp_dir"]
 
 
-class CalculateSettings(TaskSettings):
-    sentence_files: list
-    pair_mode: str
+class Calculate(Task):
+    source_files: List[Text]
     headers: bool
-    output_file: str
-    output_null: str
+    numbered: bool
+    output_format: OUTPUT_FORMAT
+    output_file: Optional[Text]
+    ds_name: Text
 
-    def __init__(self, num_cores):
-        super().__init__(num_cores)
+    def __init__(self, global_settings, task_settings):
+        super().__init__(global_settings, task_settings)
+
+        self.type = TASK_TYPE.CALCULATE
+        self.source_files = task_settings["from"]["files"]
+        try:
+            self.headers = task_settings["from"]["headers"]
+        except KeyError:
+            self.headers = False
+        try:
+            self.numbered = task_settings["from"]["numbered"]
+        except KeyError:
+            self.numbered = False
+        try:
+            self.output_format = OUTPUT_FORMAT[task_settings["output"]["format"]]
+        except KeyError:
+            self.output_format = OUTPUT_FORMAT.H5
+        try:
+            self.output_file = task_settings["output"]["file_name"]
+        except KeyError:
+            raise Exception("You must specify an output file_name when saving output")
+        try:
+            self.ds_name = task_settings["output"]["ds_name"]
+        except KeyError:
+            self.ds_name = 'sim'
+            warnings.warn("No ds_name specified, using 'sim' as name of data source in sims")
 
 
-class ConfigSettings(object):
-    tasks: list
+class Config(object):
+    tasks: List[Task]
+    temp_dir: str
     num_cores: int
 
-    def __init__(self, filename="/app/data/config.yml"):
-        self._read_config(filename)
+    def __init__(self):
+        self._read_config(CONFIG_FILE)
         self._load_global()
+        self.temp_dir = "/app/data/tmp/mi_calc_{}".format(uuid4())
         self.tasks = []
 
-        for t in self._cfg['tasks']:
-            self.tasks.append(self._load_task(t))
+        global_settings = {
+            "temp_dir": self.temp_dir,
+            "num_cores": self.num_cores,
+            "tasks": self.tasks
+        }
+
+        for task in self._cfg['tasks']:
+            self.tasks.append(self._load_task(global_settings, task))
 
     def _read_config(self, filename):
         with open(filename) as in_file:
@@ -46,45 +90,11 @@ class ConfigSettings(object):
             self.num_cores = mp.cpu_count() - 1
             raise Warning("The number of cores must be an int, defaulting to one less than max insetad")
 
-    def _load_task(self, t):
-        task = CalculateSettings(self.num_cores)
+    def _load_task(self, global_settings, task_settings):
         try:
-            if t["type"] != "calculate_similarity":
-                raise Exception("The only task type supported at this time is calculate_similarity.")
-        except KeyError:
-            pass
-
-        try:
-            task.sentence_files = t["from"]["files"]
-        except KeyError:
-            raise Exception("You must specify source files containing texts to be compared")
-
-        try:
-            if t["from"]["pairs"] == "all":
-                task.pair_mode = "all"
+            if task_settings["type"] == "calculate_similarity":
+                return Calculate(global_settings, task_settings)
             else:
-                raise Exception("The only currently supported pair mode is all")
+                raise Exception("Invalid task type supplied")
         except KeyError:
-            task.pair_mode = "all"
-
-        try:
-            if "headers" in t["from"]:
-                task.headers = t["from"]["headers"]
-            else:
-                task.headers = False
-        except KeyError:
-            task.headers = False
-
-        try:
-            task.output_file = t["output"]["filename"]
-        except KeyError:
-            task.output_file = "sims.txt"
-
-        try:
-            if "nulls" in t['output']:
-                task.null_output = str(t['output']['nulls'])
-            else:
-                task.null_output = "NULL"
-        except KeyError:
-            task.null_output = "NULL"
-        return task
+            raise Exception("No task type specified")

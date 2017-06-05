@@ -6,11 +6,11 @@ from nltk.corpus import wordnet as wn
 PUNCTUATION_PATTERN = re.compile('[%s]' % re.escape(string.punctuation))
 
 
-def clean_string(text):
+def clean_string(key, text):
     clean_sentence = text
     tokens = nltk.word_tokenize(clean_sentence.lower())
     punct_less_tokens = [PUNCTUATION_PATTERN.sub('', t).strip() for t in tokens]
-    return punct_less_tokens
+    return key, punct_less_tokens
 
 
 class MihalceaSentSimBNC(object):

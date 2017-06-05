@@ -1,0 +1,16 @@
+tasks:
+  - type: calculate_similarity
+    from:
+      files:
+        - input/def.txt
+      pairs: all
+      headers: true
+      numbered: true
+    options:
+      batch_size: 100
+    output:
+      format: H5
+      file_name: def.h5
+      ds_name: mi
+options:
+  cores: 19

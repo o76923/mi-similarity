@@ -1,42 +1,39 @@
-import re
+import h5py as h5
+import numpy as np
 from functools import partial
-import multiprocessing as mp
+from mpi4py import MPI
 from py.mi_algorithm import MihalceaSentSimBNC
 
+mi = MihalceaSentSimBNC()
 
-class SimBatchWorker(object):
+parent_comm = MPI.Comm.Get_parent().Merge()
+world_comm = MPI.COMM_WORLD
+rank = parent_comm.Get_rank()
+size = parent_comm.Get_size()
+fn = parent_comm.bcast(None, root=0)
+announcer = parent_comm.bcast(None, root=0)
+announcer = partial(announcer, process="Worker-{}".format(rank))
+f = h5.File(fn, 'a', driver='mpio', comm=world_comm)
 
-    def __init__(self, sentences, announcer, batch_count, config):
-        self.process_id = int(re.search("(\d+)$", mp.current_process().name).group(1))
-        self.dest_file = "/app/data/temp_sim/sims-%d.csv" % self.process_id
-        self.mi = MihalceaSentSimBNC()
-        self.sentence_dict = sentences
-        self.announcer = partial(announcer, process="SimBatchWorker-%d" % self.process_id)
-        self.batch_count = batch_count
-        self._cfg = config
+sentence_ds = f['/input/tokenized_text']
+sentences = [s.split() for s in sentence_ds]
+sims = f['/sim/mi']
 
-    def write_to_file(self, lines):
-        lt = "".join(["{},{},{:0.4f}\n".format(l, r, s) for l, r, s in lines])
-        with open(self.dest_file, "a") as out_file:
-            out_file.writelines(lt)
+sentence_count = len(sentences)
+chunks = np.array_split(range(sentence_count), size-1)
+chunk = chunks[rank-1]
+chunk_min = chunk[0]
+chunk_max = chunk[-1]+1
 
-sbw: SimBatchWorker
+for left_index in range(chunk_min, chunk_max):
+    new_sims = []
+    for right_index in range(left_index, sentence_count):
+        new_sims.append(mi.similarity(sentences[left_index], sentences[right_index]))
+    sims[left_index, left_index:] = new_sims
+    if left_index % 100 == 0:
+        announcer("finished row {:>6,d}/{:>6,d}".format(left_index, sentence_count))
 
+f.flush()
+f.close()
 
-def init_worker(sentences, announcer, batch_count, config):
-    global sbw
-    sbw = SimBatchWorker(sentences, announcer, batch_count, config)
-
-
-def process_batch(batch_no, batch):
-    global sbw
-    rows = []
-    for b in batch:
-        try:
-            l, r = b
-            rows.append((l, r, sbw.mi.similarity(sbw.sentence_dict[l], sbw.sentence_dict[r])))
-        except TypeError:
-            pass
-    sbw.write_to_file(rows)
-    if batch_no % 100 == 0:
-        sbw.announcer("wrote batch {:>7,d}/{:,d}".format(batch_no, sbw.batch_count))
+parent_comm.Disconnect()

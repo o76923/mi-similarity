@@ -1,5 +1,7 @@
-.gitignore
-.idea/
-mi.iml
 data/
-config/
+conf/
+.idea/
+.gitignore
+mi.iml
+Dockerfile
+.dockerignore
