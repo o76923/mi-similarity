@@ -1,5 +1,4 @@
 import h5py as h5
-import numpy as np
 from functools import partial
 from mpi4py import MPI
 from py.mi_algorithm import MihalceaSentSimBNC
@@ -20,20 +19,18 @@ sentences = [s.split() for s in sentence_ds]
 sims = f['/sim/mi']
 
 sentence_count = len(sentences)
-chunks = np.array_split(range(sentence_count), size-1)
-chunk = chunks[rank-1]
-chunk_min = chunk[0]
-chunk_max = chunk[-1]+1
 
-for left_index in range(chunk_min, chunk_max):
-    new_sims = []
-    for right_index in range(left_index, sentence_count):
-        new_sims.append(mi.similarity(sentences[left_index], sentences[right_index]))
-    sims[left_index, left_index:] = new_sims
-    if left_index % 100 == 0:
-        announcer("finished row {:>6,d}/{:>6,d}".format(left_index, sentence_count))
-
-f.flush()
-f.close()
+try:
+    for left_index in range(rank, sentence_count, size):
+        new_sims = []
+        for right_index in range(left_index, sentence_count):
+            new_sims.append(mi.similarity(sentences[left_index], sentences[right_index]))
+        sims[left_index, left_index:] = new_sims
+        if left_index % 100 == 0:
+            announcer("finished row {:>6,d}/{:>6,d}".format(left_index, sentence_count))
+            f.flush()
+finally:
+    f.flush()
+    f.close()
 
 parent_comm.Disconnect()
