@@ -6,6 +6,7 @@ from functools import partial
 from nltk.corpus import wordnet as wn
 from nltk.corpus import wordnet_ic
 from nltk.corpus import stopwords
+from nltk.corpus.reader.wordnet import Synset, _lcs_ic
 from py.utils import *
 
 
@@ -49,10 +50,9 @@ class MiSim(object):
             self.sim_functions.append(wn.path_similarity)
 
     def jcn_sim(self, left_syn, right_syn):
-        raw_sim = wn.jcn_similarity(left_syn, right_syn, self.ic)
-        raw_dist = 1.0 / raw_sim
-        scaled_sim = 1.0 - raw_dist / self.MAX_ICx2
-        return scaled_sim
+        # Normalized Jiang & Conrath similarity based on Seco, Veale, and Hayes
+        left_ic, right_ic, lcs_ic = _lcs_ic(left_syn, right_syn, self.ic)
+        return 1.0 - ((left_ic + right_ic - 2.0 * lcs_ic) / 2.0)
 
     def res_sim(self, left_syn, right_syn):
         raw_sim = wn.res_similarity(left_syn, right_syn, self.ic)
