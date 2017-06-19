@@ -1,0 +1,48 @@
+tasks:
+  - type: calculate_similarity
+    from:
+      files:
+        - input/name.txt
+      pairs: all
+      headers: true
+      numbered: true
+    options:
+      jcn: true
+      lch: true
+      path: false
+    output:
+      format: H5
+      file_name: name.h5
+      ds_name: mi
+  - type: calculate_similarity
+    from:
+      files:
+        - input/def.txt
+      pairs: all
+      headers: true
+      numbered: true
+    options:
+      jcn: true
+      lch: true
+      path: false
+    output:
+      format: H5
+      file_name: def.h5
+      ds_name: mi
+  - type: calculate_similariy
+    from:
+      files:
+        - input/item.txt
+      pairs: all
+      headers: true
+      numbered: true
+    options:
+      jcn: true
+      lch: true
+      path: false
+    output:
+      format: H5
+      file_name: item.h5
+      ds_name: mi
+options:
+  cores: 19

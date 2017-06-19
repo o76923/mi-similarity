@@ -5,14 +5,16 @@ ENTRYPOINT ["/bin/bash", "-c", "source /app/sh/entrypoint.sh"]
 
 RUN pip install \
         cython \
-        gensim \
         numpy \
         nltk \
-        pandas \
         pyyaml \
         tables \
-        scipy \
-    && python -m nltk.downloader -d /usr/share/nltk_data punkt wordnet stopwords
+    && python -m nltk.downloader -d /usr/share/nltk_data \
+        averaged_perceptron_tagger \
+        stopwords \
+        punkt \
+        wordnet \
+        wordnet_ic
 
 RUN apt-get update \
     && apt-get install -y \

@@ -6,7 +6,7 @@ import os
 import shutil
 from mpi4py import MPI
 from py.configurator import Calculate
-from py.mi_algorithm import MihalceaSentSimBNC, clean_string
+from py.string_cleaner import init_worker, clean_string
 from py.utils import *
 from functools import partial
 
@@ -15,7 +15,6 @@ class SimCalculator(object):
     def __init__(self, config: Calculate, start_time):
         self._cfg = config
         self.announcer = partial(announcer, process="Calculator", start=start_time)
-        self.mi = MihalceaSentSimBNC()
         self.raw_sentences = dict()
         self.sentences = dict()
         self.sorted_ids = []
@@ -50,7 +49,7 @@ class SimCalculator(object):
                 self.raw_sentences.update(new_documents)
 
     def clean_sentences(self):
-        with mp.Pool(self._cfg.num_cores) as pool:
+        with mp.Pool(self._cfg.num_cores, initializer=init_worker) as pool:
             self.sentences = {k: v for k, v in
                               pool.starmap_async(func=clean_string, iterable=self.raw_sentences.items()).get()}
         self.sentences = {k: v for k, v in self.sentences.items() if len(v) > 0}
@@ -92,11 +91,12 @@ class SimCalculator(object):
     def launch_workers(self):
         comm = MPI.COMM_SELF.Spawn(sys.executable,
                                    args=['-m', 'py.sim_worker'],
-                                   maxprocs=self._cfg.num_cores - 1).Merge()
+                                   maxprocs=self._cfg.num_cores-1).Merge()
         self.announcer("Workers launched")
-        comm.bcast("/app/data/output/{}".format(self._cfg.output_file), root=0)
         comm.bcast(self.announcer, root=0)
-        self.announcer("Broadcast filename and announcer")
+        comm.bcast("/app/data/output/{}".format(self._cfg.output_file), root=0)
+        comm.bcast(self._cfg.sim_algorithms, root=0)
+        self.announcer("Broadcast filename, alg list, and announcer")
         comm.Disconnect()
         self.announcer("Disconnected from COMM_SELF")
 

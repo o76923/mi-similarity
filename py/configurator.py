@@ -3,11 +3,10 @@ import os
 import warnings
 import yaml
 from uuid import uuid4
-from typing import Optional, List, Tuple, Text
+from typing import Optional, List, Set, Text
 from py.utils import *
 
-
-CONFIG_FILE = "/app/data/"+os.environ.get("CONFIG_FILE", "config.yml")
+CONFIG_FILE = "/app/data/" + os.environ.get("CONFIG_FILE", "config.yml")
 
 
 class Task(object):
@@ -15,13 +14,14 @@ class Task(object):
     temp_dir: Text
     type: TASK_TYPE
 
-    def __init__(self, global_settings, task_settings):
+    def __init__(self, global_settings):
         self.num_cores = global_settings["num_cores"]
         self.temp_dir = global_settings["temp_dir"]
 
 
 class Calculate(Task):
     source_files: List[Text]
+    sim_algorithms: Set[COMPONENT_ALGORITHM]
     headers: bool
     numbered: bool
     output_format: OUTPUT_FORMAT
@@ -29,7 +29,7 @@ class Calculate(Task):
     ds_name: Text
 
     def __init__(self, global_settings, task_settings):
-        super().__init__(global_settings, task_settings)
+        super().__init__(global_settings)
 
         self.type = TASK_TYPE.CALCULATE
         self.source_files = task_settings["from"]["files"]
@@ -54,6 +54,18 @@ class Calculate(Task):
         except KeyError:
             self.ds_name = 'sim'
             warnings.warn("No ds_name specified, using 'sim' as name of data source in sims")
+
+        self.sim_algorithms = set()
+        if "options" in task_settings:
+            for alg in ("jcn", "res", "lin", "wup", "lch", "path"):
+                try:
+                    alg_setting = task_settings["options"][alg]
+                    if alg_setting:
+                        self.sim_algorithms.add(COMPONENT_ALGORITHM[alg.upper()])
+                except KeyError:
+                    pass
+        else:
+            print("no options present")
 
 
 class Config(object):
