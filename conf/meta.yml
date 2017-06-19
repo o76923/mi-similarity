@@ -1,53 +1,53 @@
 ---
 long_name: "Michalcea's Algorithm"
 short_name: "Mi"
-description: "Michalcea's short text similarity algorithm uses WordNet to explore the distances between each possible word pair between sentences. Several different WordNet distance algorithms are used and their results normalized to range from 0 to 1 and then are averaged. The alignment between words is greedy matching. The inverse document frequency of the words based on the BNC is used to weight the importance of words during this calculation."
+description: "Michalcea's short text similarity algorithm uses WordNet to explore the distances between each possible word pair between sentences. Several different WordNet distance algorithms are used and their results normalized to range from 0 to 1 and then are averaged. A weighted average of those averages is taken between each word in one sentence and the most similar word in the other sentence where the weighting is the inverse document frequency of the words. This process is then repeated in the other direction. The BNC is used to weight the importance of words and to provide the information content for algorithms that require it."
 options:
   -
     long_name: "Jiang-Conrath"
     short_name: jcn
-    description: "Jiang-Conrath Similarity Return a score denoting how similar two word senses are, based on the Information Content (IC) of the Least Common Subsumer (most specific ancestor node) and that of the two input Synsets. The relationship is given by the equation 1 / (IC(s1) + IC(s2) - 2 * IC(lcs))."
-    default: y
+    description: "Jiang-Conrath Similarity Return a score denoting how similar two word senses are, based on the Information Content (IC) of the Least Common Subsumer (most specific ancestor node) and that of the two input Synsets. The relationship is given by the equation $\\frac{1}{IC(s_1) + IC(s_2) - 2 \times IC(LCS(s_1,s_2)))}$."
+    default: true
     boolean:
       true_description: "Include Jiang & Conrath's algoroithm"
       false_description: "Do not include Jiang & Conrath's Algorithm"
   -
     long_name: "Resnik"
     short_name: res
-    description: "Resnik Similarity: Return a score denoting how similar two word senses are, based on the Information Content (IC) of the Least Common Subsumer (most specific ancestor node). Note that for any similarity measure that uses information content, the result is dependent on the corpus used to generate the information content and the specifics of how the information content was created."
-    default: y
+    description: "Resnik Similarity: Return a score denoting how similar two word senses are, based on the Information Content (IC) of the Least Common Subsumer (most specific ancestor node). Note that for any similarity measure that uses information content, the result is dependent on the corpus used to generate the information content and the specifics of how the information content was created. The formula is $\\frac{IC(LCS(s_1,s_2)}{\\ln{IC(corpus\_token\_count}}$"
+    default: true
     boolean:
       true_description: "Include Resnik's algorithm"
       false_description: "Exclude Resnik's algorithm"
   -
     long_name: "Lin"
     short_name: lin
-    description: "Lin Similarity: Return a score denoting how similar two word senses are, based on the Information Content (IC) of the Least Common Subsumer (most specific ancestor node) and that of the two input Synsets. The relationship is given by the equation 2 * IC(lcs) / (IC(s1) + IC(s2))."
-    default: y
+    description: "Lin Similarity: Return a score denoting how similar two word senses are, based on the Information Content (IC) of the Least Common Subsumer (most specific ancestor node) and that of the two input Synsets. The relationship is given by the equation $\\frac{2 \\times IC(LCS(s_1,s_2))}{IC(s_1) + IC(s_2)}$."
+    default: true
     boolean:
-      true_description: ""
-      false_description: ""
+      true_description: "Include Lin's algorithm"
+      false_description: "Exclude Lin's algorithm"
   -
     long_name: "Wu-Palmer Similarity"
     short_name: wup
-    description: "Return a score denoting how similar two word senses are, based on the depth of the two senses in the taxonomy and that of their Least Common Subsumer (most specific ancestor node)."
-    default: y
+    description: "Return a score denoting how similar two word senses are, based on the depth of the two senses in the taxonomy and that of their Least Common Subsumer (most specific ancestor node). The formula for this is $\\frac{2 \\times depth(LCS(s_1,s_2))}{depth(s_1) + depth(s_2)}$."
+    default: true
     boolean:
-      true_description: ""
-      false_description: ""
+      true_description: "Include Wu-Palmer algorithm"
+      false_description: "Exclude Wu-Palmer algorithm"
   -
     long_name: "Leacock-Chodorow"
     short_name: lch
-    description: "Return a score denoting how similar two word senses are, based on the shortest path that connects the senses (as above) and the maximum depth of the taxonomy in which the senses occur. The relationship is given as -log(p/2d) where p is the shortest path length and d the taxonomy depth."
-    default: y
+    description: "Return a score denoting how similar two word senses are, based on the shortest path that connects the senses (as above) and the maximum depth of the taxonomy in which the senses occur. This relationship can be formulated as $\\frac{ln{\\frac{2 \\times depth(deepest\_node)}{path\_length(s_1,s_2)}}}{ln{(2 \\times depth(deepest\_node))}}$."
+    default: true
     boolean:
-      true_description: ""
-      false_description: ""
+      true_description: "Include Leackock-Chodorow algorithm"
+      false_description: "Exclude Leackock-Chodorow algorithm"
   -
     long_name: "Path similarity"
     short_name: path
     description: "Return a score denoting how similar two word senses are, based on the shortest path that connects the senses in the is-a (hypernym/hypnoym) taxonomy."
-    default: n
+    default: false
     boolean:
-      true_description: ""
-      false_description: ""
+      true_description: "Include path similarity algorithm"
+      false_description: "Exclude path similarity algorithm"
