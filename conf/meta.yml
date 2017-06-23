@@ -1,4 +1,4 @@
 ---
-long_name: "Michalcea's Algorithm"
+display_name: "Michalcea's Algorithm"
 short_name: "Mi"
 description: "Michalcea's short text similarity algorithm uses WordNet to explore the distances between each possible word pair between sentences. Several different WordNet distance algorithms are used and their results are averaged. The alignment between words is greedy matching. The inverse document frequency of the words based on the BNC is used to weight the importance of words during this calculation."
