@@ -15,7 +15,7 @@ class MiSim(object):
     # Based on all leaf nouns that didn't have an IC of 1e+300
     MAX_ICx2 = 19.05665959003492 ** 2.0
 
-    # Based on orthographic word count from http://www.natcorp.ox.ac.uk/corpus/index.xml?ID=numbers
+    # Based on lorthographic word count from http://www.natcorp.ox.ac.uk/corpus/index.xml?ID=numbers
     LN_SYN_COUNT = math.log(96986707.0)
 
     # The max depth based on wn._compute_max_depth('n', False) is 19

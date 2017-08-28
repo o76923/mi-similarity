@@ -1,5 +1,5 @@
 import sys
-import h5py as h5
+import h5py
 import numpy as np
 import multiprocessing as mp
 import os
@@ -14,20 +14,16 @@ from functools import partial
 class SimCalculator(object):
     def __init__(self, config: Calculate, start_time):
         self._cfg = config
+        if config.output_format == OUTPUT_FORMAT.H5:
+            self.file_name = '/app/data/{}'.format(self._cfg.output_file)
+        if config.output_format == OUTPUT_FORMAT.CSV:
+            self.file_name = '/app/data/{}'.format(self._cfg.output_file)[:-3] + 'h5'
+        self.f = h5py.File(self.file_name, 'w')
+        shutil.chown(self.f.filename, user=1000)
         self.announcer = partial(announcer, process="Calculator", start=start_time)
         self.raw_sentences = dict()
         self.sentences = dict()
         self.sorted_ids = []
-        self._init_hdf5()
-
-    def _init_hdf5(self):
-        try:
-            os.mkdir("/app/data/output")
-            shutil.chown("/app/data/output/", user=1000)
-        except FileExistsError:
-            pass
-        self.f = h5.File("/app/data/output/{}".format(self._cfg.output_file), 'w')
-        shutil.chown(self.f.filename, user=1000)
 
     def load_sentences(self):
         self.raw_sentences = {}
@@ -61,7 +57,7 @@ class SimCalculator(object):
                                 dtype=np.uint32,
                                 shape=(len(self.sentences),),
                                 data=np.array(self.sorted_ids))
-        string_dt = h5.h5t.special_dtype(vlen=str)
+        string_dt = h5py.h5t.special_dtype(vlen=str)
         in_data.require_dataset("text",
                                 dtype=string_dt,
                                 shape=(len(self.sentences),),
@@ -85,6 +81,7 @@ class SimCalculator(object):
                                       fillvalue=0.0)
 
     def _close_file(self):
+        print("close filename", self.f.filename)
         self.f.flush()
         self.f.close()
 
@@ -94,9 +91,11 @@ class SimCalculator(object):
                                    maxprocs=self._cfg.num_cores-1).Merge()
         self.announcer("Workers launched")
         comm.bcast(self.announcer, root=0)
-        comm.bcast("/app/data/output/{}".format(self._cfg.output_file), root=0)
+        self.announcer("Announcer broadcast")
+        comm.bcast(self.file_name, root=0)
+        self.announcer("file_name broadcast")
         comm.bcast(self._cfg.sim_algorithms, root=0)
-        self.announcer("Broadcast filename, alg list, and announcer")
+        self.announcer("Broadcast cfg")
         comm.Disconnect()
         self.announcer("Disconnected from COMM_SELF")
 

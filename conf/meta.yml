@@ -1,7 +1,7 @@
 ---
-long_name: "Michalcea's Algorithm"
+long_name: "Mihalcea's Algorithm"
 short_name: "Mi"
-description: "Michalcea's short text similarity algorithm uses WordNet to explore the distances between each possible word pair between sentences. Several different WordNet distance algorithms are used and their results normalized to range from 0 to 1 and then are averaged. A weighted average of those averages is taken between each word in one sentence and the most similar word in the other sentence where the weighting is the inverse document frequency of the words. This process is then repeated in the other direction. The BNC is used to weight the importance of words and to provide the information content for algorithms that require it."
+description: "Mihalcea's short text similarity algorithm uses WordNet to explore the distances between each possible word pair between sentences. Several different WordNet distance algorithms are used and their results normalized to range from 0 to 1 and then are averaged. A weighted average of those averages is taken between each word in one sentence and the most similar word in the other sentence where the weighting is the inverse document frequency of the words. This process is then repeated in the other direction. The BNC is used to weight the importance of words and to provide the information content for algorithms that require it."
 options:
   -
     long_name: "Jiang-Conrath"

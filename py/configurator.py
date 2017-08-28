@@ -42,7 +42,7 @@ class Calculate(Task):
         except KeyError:
             self.numbered = False
         try:
-            self.output_format = OUTPUT_FORMAT[task_settings["output"]["format"]]
+            self.output_format = OUTPUT_FORMAT[task_settings["output"]["format"].upper()]
         except KeyError:
             self.output_format = OUTPUT_FORMAT.H5
         try:
