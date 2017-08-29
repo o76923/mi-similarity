@@ -37,9 +37,7 @@ class MiSim(object):
     def _set_algs(self, algs):
         self.sim_functions = []
         if COMPONENT_ALGORITHM.JCN in algs:
-            self.sim_functions.append(self.jcn_sim)
-        if COMPONENT_ALGORITHM.RES in algs:
-            self.sim_functions.append(self.res_sim)
+            self.sim_functions.append(partial(wn.jcn_similarity, ic=self.ic))
         if COMPONENT_ALGORITHM.LIN in algs:
             self.sim_functions.append(partial(wn.lin_similarity, ic=self.ic))
         if COMPONENT_ALGORITHM.WUP in algs:
@@ -49,10 +47,10 @@ class MiSim(object):
         if COMPONENT_ALGORITHM.PATH in algs:
             self.sim_functions.append(wn.path_similarity)
 
-    def jcn_sim(self, left_syn, right_syn):
-        # Normalized Jiang & Conrath similarity based on Seco, Veale, and Hayes
+    def svh_sim(self, left_syn, right_syn):
+        # Normalized Jiang & Conrath similarity based on forumla 6 in Seco, Veale, and Hayes
         left_ic, right_ic, lcs_ic = _lcs_ic(left_syn, right_syn, self.ic)
-        return 1.0 - ((left_ic + right_ic - 2.0 * lcs_ic) / 2.0)
+        return 1.0 - ((left_ic + right_ic - 2.0 * wn.res_similarity(left_syn, right_syn, self.ic))/2.0)
 
     def res_sim(self, left_syn, right_syn):
         raw_sim = wn.res_similarity(left_syn, right_syn, self.ic)
@@ -87,7 +85,7 @@ class MiSim(object):
         left_syns = self.get_synsets(left_word)
         right_syns = self.get_synsets(right_word)
 
-        best_sim = 0.0
+        best_sim = -0.01
         for pos in ('n', 'v'):
             for left_syn, right_syn in product(left_syns[pos], right_syns[pos]):
                 new_sim = self.average_syn_score(left_syn, right_syn)
