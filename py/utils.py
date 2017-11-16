@@ -1,10 +1,12 @@
 import subprocess
+from functools import wraps
 from datetime import datetime
 from enum import Enum
 
 TASK_TYPE = Enum('TASK_TYPE', 'CREATE PROJECT CALCULATE')
 PAIR_MODE = Enum('PAIR_MODE', 'ALL CROSS LIST')
 OUTPUT_FORMAT = Enum('OUTPUT_FORMAT', 'H5 CSV')
+COMPONENT_ALGORITHM = Enum('COMPONENT_ALGORITHM', 'JCN RES LIN WUP LCH PATH')
 
 
 def run_cmd(cmd, raw=False):
@@ -26,3 +28,16 @@ def announcer(msg, process, start):
                                                                                               minutes,
                                                                                               seconds),
                                                   msg=msg))
+
+
+def memoize(obj):
+    cache = obj.cache = {}
+
+    @wraps(obj)
+    def memoizer(*args):
+        try:
+            return cache[args]
+        except KeyError:
+            cache[args] = ret = obj(*args)
+            return ret
+    return memoizer

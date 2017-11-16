@@ -1,196 +1,126 @@
-import re
-import string
-import nltk
+import math
+import numpy as np
+from itertools import product, groupby
+from collections import defaultdict
+from functools import partial
 from nltk.corpus import wordnet as wn
-
-PUNCTUATION_PATTERN = re.compile('[%s]' % re.escape(string.punctuation))
-
-
-def clean_string(key, text):
-    clean_sentence = text
-    tokens = nltk.word_tokenize(clean_sentence.lower())
-    punct_less_tokens = [PUNCTUATION_PATTERN.sub('', t).strip() for t in tokens]
-    return key, punct_less_tokens
+from nltk.corpus import wordnet_ic
+from nltk.corpus import stopwords
+from nltk.corpus.reader.wordnet import Synset, _lcs_ic
+from py.utils import *
 
 
-class MihalceaSentSimBNC(object):
-    """
-    @author CH Bong
-    Implemented Mihalcea's sentence similarity measure
-    BNC, version
-    """
-    ic = None
-    #information content holder
-    #tc = None #term count?
-    idf = {}
-    debug = False
-    idf_file = '/app/data/bnc.ic'
+class MiSim(object):
 
-    def __init__(self):
-        '''
-        Constructor
-        '''
-        #print 'Loading Brown information content ...'
-        #wnic = WordNetICCorpusReader(nltk.data.find('corpora/wordnet_ic'), '.*\.dat')
-        #self.ic = wnic.ic('ic-brown.dat')
+    # Based on all leaf nouns that didn't have an IC of 1e+300
+    MAX_ICx2 = 19.05665959003492 ** 2.0
 
-        '''
-        Load bnc idf
-        '''
-        # print 'Loading BNC Information Content dictionary ...'
-        with open(self.idf_file, 'r', encoding="utf-8") as bnc_idf:
+    # Based on lorthographic word count from http://www.natcorp.ox.ac.uk/corpus/index.xml?ID=numbers
+    LN_SYN_COUNT = math.log(96986707.0)
+
+    # The max depth based on wn._compute_max_depth('n', False) is 19
+    LCH_MAX = -math.log(1.0 / (2.0 * 19.0))
+
+    def __init__(self, algs):
+        self._load_idf()
+        self.ic = wordnet_ic.ic('ic-bnc.dat')
+        self.stopwords = set(stopwords.words('english'))
+        self._set_algs(algs)
+
+    def _load_idf(self):
+        self.idf = {}
+        with open('/app/data/bnc.ic', 'r') as bnc_idf:
             for line in bnc_idf:
                 word, score = line.split(',')
                 self.idf[word] = float(score)
-                # print 'Total of item:',len(self.idf)
 
-    def find_the_most_similar_word(self, term, tokenized_list):
-        best_score = 0
-        best_term = ''
+    def _set_algs(self, algs):
+        self.sim_functions = []
+        if COMPONENT_ALGORITHM.JCN in algs:
+            self.sim_functions.append(partial(wn.jcn_similarity, ic=self.ic))
+        if COMPONENT_ALGORITHM.LIN in algs:
+            self.sim_functions.append(partial(wn.lin_similarity, ic=self.ic))
+        if COMPONENT_ALGORITHM.WUP in algs:
+            self.sim_functions.append(wn.wup_similarity)
+        if COMPONENT_ALGORITHM.LCH in algs:
+            self.sim_functions.append(self.lch_sim)
+        if COMPONENT_ALGORITHM.PATH in algs:
+            self.sim_functions.append(wn.path_similarity)
 
-        for compared_term in tokenized_list:
-            score = self.average_score(term, compared_term)
-            # print 'score:',score
-            if score >= best_score:
-                best_score = score
-                best_term = compared_term
+    def svh_sim(self, left_syn, right_syn):
+        # Normalized Jiang & Conrath similarity based on forumla 6 in Seco, Veale, and Hayes
+        left_ic, right_ic, lcs_ic = _lcs_ic(left_syn, right_syn, self.ic)
+        return 1.0 - ((left_ic + right_ic - 2.0 * wn.res_similarity(left_syn, right_syn, self.ic))/2.0)
 
-        return best_term, best_score
+    def res_sim(self, left_syn, right_syn):
+        raw_sim = wn.res_similarity(left_syn, right_syn, self.ic)
+        scaled_sim = raw_sim / self.LN_SYN_COUNT
+        return scaled_sim
 
-    def average_score(self, word1, word2, verbose=False):
-        '''
-        Compute average of WSD scores using the most common synset
-        '''
-        #msg = ''
-        #if self.debug: msg += 'Working on [%s] and [%s].' % (word1, word2)
+    def lch_sim(self, left_syn, right_syn):
+        raw_sim = wn.lch_similarity(left_syn, right_syn)
+        scaled_sim = raw_sim / self.LCH_MAX
+        return scaled_sim
 
-        if word1 == word2:
-            #if self.debug: print ' Identical words, return 1.'
-            #print msg
-            return 1
+    @memoize
+    def get_synsets(self, word):
+        ret = defaultdict(list)
+        group = {k: list(i[1] for i in v) for k, v in groupby([(s.pos(), s) for s in wn.synsets(word)],
+                                                              key=lambda x: x[0])}
+        ret.update(group)
+        return ret
 
-        else:
-            #Use common synset
-            synset1 = wn.synsets(word1)
-            synset2 = wn.synsets(word2)
-            if len(synset1) ==0 or len(synset2)==0:
-                #if self.debug: print ' Empty synsets, return 0.'
-                #print msg
-                return 0
-            else:
-                com_synset1 = wn.synsets(word1)[0]
-                com_synset2 = wn.synsets(word2)[0]
+    @memoize
+    def average_syn_score(self, left_syn, right_syn):
+        if left_syn == right_syn:
+            return 1.0
+        sims = [fn(left_syn, right_syn) for fn in self.sim_functions]
+        return np.nanmean(sims)
 
-                if com_synset1.pos != com_synset2.pos:
-                    #if self.debug: print ' Incompatible pos, return 0.'
-                    #print msg
-                    return 0
+    @memoize
+    def average_word_score(self, left_word, right_word):
+        if left_word == right_word:
+            return 1.0
 
-                score = 0
-                count = 0
+        left_syns = self.get_synsets(left_word)
+        right_syns = self.get_synsets(right_word)
 
-                #word similarity scoring functions
-                sim = 0
-                functions = [wn.wup_similarity, wn.path_similarity, wn.lin_similarity, wn.jcn_similarity]
-                for func in functions:
-                    if func == wn.lin_similarity or func == wn.res_similarity:
-                        try:
-                            sim = func(com_synset1, com_synset2, self.ic)
-                            if sim is not None:
-                                score = score + sim
-                                count = count + 1
-                        except:
-                            None
-                    else:
-                        try:
-                            sim = func(com_synset1, com_synset2)
-                            if sim is not None:
-                                score = score + sim
-                                count = count + 1
-                        except:
-                            None
+        best_sim = 0.0
+        for pos in ('n', 'v'):
+            for left_syn, right_syn in product(left_syns[pos], right_syns[pos]):
+                new_sim = self.average_syn_score(left_syn, right_syn)
+                if new_sim > best_sim:
+                    best_sim = new_sim
 
-                            #if self.debug: msg += ' Sim: %s,%s,%s,%s' % (sim, func, com_synset1, com_synset2)
+        return best_sim
 
-                if score == 0 or count ==0:
-                    #if self.debug: print '0 score, 0 count'
-                    #print msg
-                    return 0
-                else:
-                    #if self.debug: print 'Average Sim: %s/%s=%s' % (score, count, score/count)
-                    #print msg
-                    return score/count
+    def token_sim_matrix(self, left_tokens, right_tokens):
+        # Make an empty matrix to store each word-word similarity
+        sim_mat = np.zeros((len(left_tokens), len(right_tokens)))
 
-    def similarity(self, sentence1, sentence2):
-        '''
-        Similarity function
-        '''
-        #sentence1 = self.clean_string(sentence1)
-        #sentence2 = self.clean_string(sentence2)
+        # Iterate through each word in both sentences
+        for left_index, left_word in enumerate(left_tokens):
+            for right_index, right_word in enumerate(right_tokens):
+                sim_mat[left_index, right_index] = self.average_word_score(left_word, right_word)
 
-        # list1 = clean_string(sentence1)
-        # list2 = clean_string(sentence2)
-        list1 = sentence1
-        list2 = sentence2
+        # return the sim matrix
+        return sim_mat
 
-        '''
-        First half
-        '''
-        totalTerm1Score = 0
-        totalTerm1IDF = 0
-        best_term = ''
-        idf = 0
-        for term1 in list1:
-            if term1 in self.idf:
-                idf = self.idf[term1]
-            else:
-                idf = 0
+    def similarity(self, left_tokens, right_tokens):
+        if len(left_tokens) == 0 or len(right_tokens) == 0:
+            return 0.0
+        if left_tokens == right_tokens:
+            return 1.0
+        token_sim = self.token_sim_matrix(left_tokens, right_tokens)
 
-            best_term, score = self.find_the_most_similar_word(term1, list2)
+        left_maxes = np.argmax(token_sim, 1)
+        left_idf = [self.idf[t] for t in left_tokens]
+        left_scores = token_sim[(range(len(left_maxes)), left_maxes)]
+        left_half = np.sum(left_idf * left_scores) / np.sum(left_idf)
 
-            #print '%s vs %s: %s' % (term1, best_term, score)
-            totalTerm1IDF += idf
-            totalTerm1Score += score*idf
+        right_maxes = np.argmax(token_sim, 0)
+        right_idf = [self.idf[t] for t in right_tokens]
+        right_scores = token_sim[(right_maxes, range(len(right_maxes)))]
+        right_half = np.sum(right_idf * right_scores) / np.sum(right_idf)
 
-        '''
-        Second half
-        '''
-        if self.debug: print('Second half ..\n\n')
-
-        totalTerm2Score = 0
-        totalTerm2IDF = 0
-        for term2 in list2:
-            if term2 in self.idf:
-                idf = self.idf[term2]
-            else:
-                idf = 0
-            # print 'idf',idf
-            best_term, score = self.find_the_most_similar_word(term2, list1)
-
-            # print '%s vs %s: %s' % (term2, best_term, score)
-
-            totalTerm2IDF += idf
-            # print totalTerm2IDF
-            totalTerm2Score += score*idf
-
-        #first_half = 0
-
-        if totalTerm1Score==0 or totalTerm1IDF==0:
-            first_half = 0
-        else:
-            first_half = totalTerm1Score/totalTerm1IDF
-            if self.debug:
-                print('first_half: %s/%s = %s' % (totalTerm1Score,totalTerm1IDF,totalTerm1Score/totalTerm1IDF))
-
-        #second_half = 0
-        if totalTerm2Score==0 or totalTerm2IDF==0:
-            second_half = 0
-        else:
-            second_half = totalTerm2Score/totalTerm2IDF
-            if self.debug:
-                print('second_half: %s/%s = %s' % (totalTerm2Score,totalTerm2IDF,totalTerm2Score/totalTerm2IDF))
-
-        #sim_score = (first_half + second_half)*0.5
-        #sim_score = (first_half + second_half)*0.5
-
-        return (first_half + second_half)*0.5
+        return (left_half + right_half) * 0.5

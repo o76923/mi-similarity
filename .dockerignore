@@ -1,6 +1,8 @@
-data/
-conf/
-.idea/
+data
+conf
+.idea
+exclude
+
 .gitignore
 mi.iml
 Dockerfile

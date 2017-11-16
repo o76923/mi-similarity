@@ -15,13 +15,13 @@ announcer("Loaded Configuration")
 os.makedirs(cfg.temp_dir)
 announcer("Created temp directory at {}".format(cfg.temp_dir))
 
-for task in cfg.tasks:
-    t = SimCalculator(task, start_time)
-    t.main()
-    announcer("Finished Task")
-announcer("Finished All Tasks")
-
-rmtree(cfg.temp_dir)
-announcer("Removed temp directory")
-
+try:
+    for task in cfg.tasks:
+        t = SimCalculator(task, start_time)
+        t.main()
+        announcer("Finished Task")
+    announcer("Finished All Tasks")
+finally:
+    rmtree(cfg.temp_dir)
+    announcer("Removed temp directory")
 announcer("Done")
