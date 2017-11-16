@@ -85,7 +85,7 @@ class MiSim(object):
         left_syns = self.get_synsets(left_word)
         right_syns = self.get_synsets(right_word)
 
-        best_sim = -0.01
+        best_sim = 0.0
         for pos in ('n', 'v'):
             for left_syn, right_syn in product(left_syns[pos], right_syns[pos]):
                 new_sim = self.average_syn_score(left_syn, right_syn)
@@ -107,6 +107,10 @@ class MiSim(object):
         return sim_mat
 
     def similarity(self, left_tokens, right_tokens):
+        if len(left_tokens) == 0 or len(right_tokens) == 0:
+            return 0.0
+        if left_tokens == right_tokens:
+            return 1.0
         token_sim = self.token_sim_matrix(left_tokens, right_tokens)
 
         left_maxes = np.argmax(token_sim, 1)

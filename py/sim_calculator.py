@@ -1,12 +1,11 @@
 import sys
 from itertools import combinations
 
-import h5py
 import numpy as np
 import multiprocessing as mp
 import os
+import h5py
 import shutil
-# from mpi4py import MPI
 from py.configurator import Calculate
 from py.string_cleaner import init_worker, clean_string
 from py.utils import *
@@ -62,7 +61,7 @@ class SimCalculator(object):
         text = self.input.require_dataset("text",
                                        dtype=string_dt,
                                        shape=(len(self.sentences),),
-                                       data=[" ".join(self.raw_sentences[x]).encode('utf-8') for x in self.sorted_ids])
+                                       data=[self.raw_sentences[x].encode('utf-8') for x in self.sorted_ids])
         text.attrs.create("description", "The raw text of the sentence provided by the user.", dtype=string_dt)
         tok = self.input.require_dataset("tokenized_text",
                                       dtype=string_dt,
@@ -128,20 +127,6 @@ class SimCalculator(object):
         self.f.flush()
         self.f.close()
 
-    # def launch_workers(self):
-    #     comm = MPI.COMM_SELF.Spawn(sys.executable,
-    #                                args=['-m', 'py.sim_worker'],
-    #                                maxprocs=self._cfg.num_cores-1).Merge()
-    #     self.announcer("Workers launched")
-    #     comm.bcast(self.announcer, root=0)
-    #     self.announcer("Announcer broadcast")
-    #     comm.bcast(self.file_name, root=0)
-    #     self.announcer("file_name broadcast")
-    #     comm.bcast(self._cfg.sim_algorithms, root=0)
-    #     self.announcer("Broadcast cfg")
-    #     comm.Disconnect()
-    #     self.announcer("Disconnected from COMM_SELF")
-
     def calculate_sims(self):
         mi = MiSim(self._cfg.sim_algorithms)
         self.announcer("init mi")
@@ -149,7 +134,6 @@ class SimCalculator(object):
             self.ds[ix, ix] = 1.0
         for (left_index, left_id), (right_index, right_id) in combinations(enumerate(self.sorted_ids), 2):
             self.ds[left_index, right_index] = mi.similarity(self.wn_tokens[left_id], self.wn_tokens[right_id])
-            # print(left_id, right_id, self.ds[left_index, right_index], self.wn_tokens[left_id], self.wn_tokens[right_id])
 
     def convert_to_csv(self):
         sims = self.ds[:]
@@ -172,4 +156,3 @@ class SimCalculator(object):
             self.announcer("Made CSV")
         self._close_file()
         self.announcer("Closed h5 file")
-        # self.launch_workers()
